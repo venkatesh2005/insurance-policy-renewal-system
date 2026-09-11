@@ -1,0 +1,84 @@
+spring:
+  application:
+    name: policy-renewal-system
+
+  datasource:
+    url: jdbc:h2:file:./data/policyrenewaldb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    open-in-view: false
+
+  sql:
+    init:
+      mode: always
+
+  batch:
+    jdbc:
+      initialize-schema: always
+    job:
+      enabled: false
+
+server:
+  port: 8080
+
+# ---- Logging ----
+logging:
+  file:
+    name: logs/policy-renewal-system.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 7
+      total-size-cap: 100MB
+  level:
+    root: INFO
+    com.fulcrumdigital.policyrenewal: INFO
+  pattern:
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+# ---- Application-specific settings ----
+# Everything under here is read via @Value in the various components.
+# Nothing is hard-coded — satisfies "keep the knobs configurable".
+
+renewal:
+  detection:
+    window-days: 30
+    chunk-size: 10
+  lapse:
+    grace-period-days: 15
+    chunk-size: 10
+
+notification:
+  poll:
+    interval-ms: 5000
+    batch-size: 5
+    worker-count: 3
+  pool:
+    core-size: 3
+    max-size: 5
+    queue-capacity: 50
+  retry:
+    max-attempts: 3
+    base-delay-minutes: 1
+
+report:
+  output-dir: reports
+
+# Scheduling cron expressions are now stored in the job_schedule
+# database table — seeded by schema.sql on first startup.
+# Change them at runtime via PUT /schedules/{jobName}/cron
+# without restarting the app.
+# For demo: use PUT /schedules/renewalDetectionJob/cron
+# with body { "cronExpr": "0 */2 * * * *" } to fire every 2 minutes.
