@@ -62,10 +62,19 @@ public class NotificationService {
         outboxRepository.save(event);
         logAttempt(event, attemptNumber, NotificationOutcome.INVALID_CONTACT, "Contact rejected by gateway");
 
-        policyRepository.findByPolicyNumber(event.getPolicyNumber()).ifPresent(policy -> {
-            policy.setNeedsManualFollowUp(true);
-            policyRepository.save(policy);
-        });
+        // Wrap in try/catch — multiple workers may try to update the same
+        // policy's needsManualFollowUp flag concurrently. If another worker
+        // already set it, the version check fails. Since the flag is already
+        // true in that case, silently ignore the conflict.
+        try {
+            policyRepository.findByPolicyNumber(event.getPolicyNumber()).ifPresent(policy -> {
+                policy.setNeedsManualFollowUp(true);
+                policyRepository.save(policy);
+            });
+        } catch (Exception ex) {
+            log.warn("Could not flag policy {} for manual follow-up (concurrent update) — flag may already be set",
+                    event.getPolicyNumber());
+        }
 
         log.warn("Reminder {} — invalid contact for policy {}. Flagged for manual follow-up.",
                 event.getId(), event.getPolicyNumber());

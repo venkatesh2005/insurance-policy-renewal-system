@@ -22,21 +22,35 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+// Requirement: "one test proving the create API is idempotent."
+// Pure Mockito unit test — no Spring context, no real database.
+// The idempotency rule is plain branching logic in PolicyService
+// that does not need a real DB to verify.
 @ExtendWith(MockitoExtension.class)
 class PolicyServiceTest {
 
-    @Mock private PolicyRepository policyRepository;
-    @Mock private Clock clock;
-    @Mock private NotificationLogRepository notificationLogRepository;
-    @Mock private PolicyRenewalExecutor policyRenewalExecutor;
+    @Mock
+    private PolicyRepository policyRepository;
+
+    @Mock
+    private Clock clock;
+
+    @Mock
+    private NotificationLogRepository notificationLogRepository;
+
+    @Mock
+    private PolicyRenewalExecutor policyRenewalExecutor;
 
     @InjectMocks
     private PolicyService policyService;
 
+    // ---------------------------------------------------------------
+    // Test 1: duplicate policyNumber → returns existing, never saves
+    // ---------------------------------------------------------------
     @Test
     void createPolicy_whenPolicyNumberAlreadyExists_returnsDuplicateAndDoesNotSaveAgain() {
         Policy existing = Policy.builder()
-                .policyNumber("POL-1001")
+                .policyNumber("POL-001")
                 .holderName("Ramesh Kumar")
                 .policyType(PolicyType.MOTOR)
                 .premiumAmount(new BigDecimal("5000"))
@@ -45,40 +59,58 @@ class PolicyServiceTest {
                 .status(PolicyStatus.ACTIVE)
                 .build();
 
-        when(policyRepository.findByPolicyNumber("POL-1001")).thenReturn(Optional.of(existing));
+        when(policyRepository.findByPolicyNumber("POL-001"))
+                .thenReturn(Optional.of(existing));
 
-        CreatePolicyRequest request = new CreatePolicyRequest();
-        request.setPolicyNumber("POL-1001");
-        request.setHolderName("Ramesh Kumar");
-        request.setPolicyType(PolicyType.MOTOR);
-        request.setPremiumAmount(new BigDecimal("5000"));
-        request.setStartDate(LocalDate.of(2025, 1, 1));
-        request.setEndDate(LocalDate.of(2026, 1, 1));
+        CreatePolicyRequest request = buildRequest(
+                "POL-001", "Ramesh Kumar", PolicyType.MOTOR,
+                new BigDecimal("5000"),
+                LocalDate.of(2025, 1, 1), LocalDate.of(2026, 1, 1));
 
         PolicyResponse response = policyService.createPolicy(request);
 
+        // Core assertion: duplicate flag set, no new row written
         assertThat(response.isDuplicate()).isTrue();
-        assertThat(response.getPolicyNumber()).isEqualTo("POL-1001");
+        assertThat(response.getPolicyNumber()).isEqualTo("POL-001");
+        assertThat(response.getStatus()).isEqualTo(PolicyStatus.ACTIVE);
         verify(policyRepository, never()).save(any(Policy.class));
     }
 
+    // ---------------------------------------------------------------
+    // Test 2: new policyNumber → creates ACTIVE policy, saves exactly once
+    // ---------------------------------------------------------------
     @Test
     void createPolicy_whenPolicyNumberIsNew_createsActivePolicyAndSavesOnce() {
-        when(policyRepository.findByPolicyNumber("POL-2002")).thenReturn(Optional.empty());
-        when(policyRepository.save(any(Policy.class))).thenAnswer(i -> i.getArgument(0));
+        when(policyRepository.findByPolicyNumber("POL-002"))
+                .thenReturn(Optional.empty());
+        when(policyRepository.save(any(Policy.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
-        CreatePolicyRequest request = new CreatePolicyRequest();
-        request.setPolicyNumber("POL-2002");
-        request.setHolderName("Asha Patel");
-        request.setPolicyType(PolicyType.HEALTH);
-        request.setPremiumAmount(new BigDecimal("3000"));
-        request.setStartDate(LocalDate.of(2026, 1, 1));
-        request.setEndDate(LocalDate.of(2027, 1, 1));
+        CreatePolicyRequest request = buildRequest(
+                "POL-002", "Asha Patel", PolicyType.HEALTH,
+                new BigDecimal("3000"),
+                LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1));
 
         PolicyResponse response = policyService.createPolicy(request);
 
         assertThat(response.isDuplicate()).isFalse();
         assertThat(response.getStatus()).isEqualTo(PolicyStatus.ACTIVE);
-        verify(policyRepository).save(any(Policy.class));
+        assertThat(response.getPolicyNumber()).isEqualTo("POL-002");
+        verify(policyRepository, times(1)).save(any(Policy.class));
+    }
+
+    // ---------------------------------------------------------------
+    // Helper
+    // ---------------------------------------------------------------
+    private CreatePolicyRequest buildRequest(String policyNumber, String holderName,
+                                             PolicyType type, BigDecimal premium, LocalDate start, LocalDate end) {
+        CreatePolicyRequest r = new CreatePolicyRequest();
+        r.setPolicyNumber(policyNumber);
+        r.setHolderName(holderName);
+        r.setPolicyType(type);
+        r.setPremiumAmount(premium);
+        r.setStartDate(start);
+        r.setEndDate(end);
+        return r;
     }
 }

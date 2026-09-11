@@ -16,7 +16,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: none
-    show-sql: true
+    show-sql: false
     open-in-view: false
 
   sql:
@@ -44,6 +44,7 @@ logging:
   level:
     root: INFO
     com.fulcrumdigital.policyrenewal: INFO
+    org.hibernate.engine.jdbc.spi.SqlExceptionHelper: OFF
   pattern:
     file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
     console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
